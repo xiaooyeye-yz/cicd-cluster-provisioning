@@ -56,7 +56,7 @@ jobs:
 
       - name: Update portforwarding for NGINX Ingress Controller
         run: |
-          nohup kubectl port-forward svc/ingress-nginx-controller 8080:80 > port-forward.log 2>&1 &
+          nohup kubectl port-forward svc/ingress-nginx-controller -n ingress-nginx 8080:80 > port-forward.log 2>&1 &
 
       - name: Run Vegeta attack
         run: |
@@ -67,7 +67,7 @@ jobs:
           cat report_foo.txt report_bar.txt > full_report.txt
       
       - name: Kill port-forward
-        run: kill $(lsof -t -i :8080)
+        run: kill -9 $(lsof -t -i :8080)
 
       - name: Post PR comment
         env:
