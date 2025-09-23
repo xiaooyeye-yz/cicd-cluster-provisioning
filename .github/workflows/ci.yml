@@ -56,9 +56,7 @@ jobs:
 
       - name: Update portforwarding for NGINX Ingress Controller
         run: |
-          kubectl port-forward svc/ingress-nginx-controller -n ingress-nginx 8080:80 &
-          PF_PID=$!
-          echo "Port-forward PID: $PF_PID"
+          nohup kubectl port-forward svc/my-service 8080:80 > port-forward.log 2>&1 &
 
       - name: Run Vegeta attack
         run: |
