@@ -66,8 +66,12 @@ jobs:
           # Combine reports into one file
           cat report_foo.txt report_bar.txt > full_report.txt
       
-      - name: Kill port-forward
-        run: kill -9 $(lsof -t -i :8080)
+      - name: Kill port-forward and other cleanup
+        run: |
+          kill -9 $(lsof -t -i :8080)
+          rm report_foo.txt
+          rm report_bar.txt
+          rm full_report.txt
 
       - name: Post PR comment
         env:
@@ -75,7 +79,9 @@ jobs:
         run: |
           # Read the report content from the file
           REPORT_CONTENT=$(cat full_report.txt)
+          echo REPORT_CONTENT
           PR_NUMBER=$(jq --raw-output .pull_request.number "$GITHUB_EVENT_PATH")
+          echo PR_NUMBER
           
           # Post the report as a comment on the PR
           curl -s -X POST \
