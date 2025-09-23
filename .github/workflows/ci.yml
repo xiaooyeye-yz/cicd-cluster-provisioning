@@ -1,0 +1,88 @@
+name: Kind CI
+
+
+on:
+  pull_request:
+    branches:
+      - main    
+
+jobs:
+  test:
+    runs-on: self-hosted
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v3
+
+      - name: Install Vegeta # for load testing
+        run: |
+          if ! command -v vegeta &>/dev/null; then
+            brew install vegeta
+          fi
+          vegeta -version
+      
+      - name: Set up KinD cluster # spin up kind cluster
+        run: |
+          if ! command -v kind &>/dev/null; then
+            brew install kind
+          fi
+          kind create cluster --name ci-cluster --config cluster.yaml --wait 5m
+      
+      - name: Set up kubectl # make sure kubectl is installed and can access the kind cluster
+        run: |
+          if ! command -v kubectl &>/dev/null; then
+            brew install kubectl
+          fi
+          kubectl cluster-info --context kind-ci-cluster
+      
+      - name: Install NGINX Ingress Controller 
+        run: |
+          kubectl apply -f https://raw.githubusercontent.com/kubernetes/ingress-nginx/controller-v1.15.1/deploy/static/provider/cloud/deploy.yaml
+          kubectl wait --namespace ingress-nginx \
+            --for=condition=ready pod \
+            --selector=app.kubernetes.io/component=controller \
+            --timeout=120s
+      
+      - name: Deploy foo and bar services
+        run: |
+          kubectl apply -f foo-deployment.yaml
+          kubectl apply -f foo-svc.yaml
+          kubectl apply -f bar-deployment.yaml
+          kubectl apply -f bar-svc.yaml
+          kubectl apply -f ingress.yaml
+          kubectl wait --namespace ingress-nginx --for=condition=available deployment/foo --timeout=120s
+          kubectl wait --namespace ingress-nginx --for=condition=available deployment/bar --timeout=120s
+        
+
+      - name: Update portforwarding for NGINX Ingress Controller
+        run: |
+          kubectl port-forward svc/ingress-nginx-controller -n ingress-nginx 8080:80 &
+          PF_PID=$!
+          echo "Port-forward PID: $PF_PID"
+
+      - name: Run Vegeta attack
+        run: |
+          # Run Vegeta attack and store the reports in files
+          echo "GET http://localhost:8080/ HTTP/1.1\nHost: foo.local" | vegeta attack -duration=5s -rate=20 | vegeta report > report_foo.txt
+          echo "GET http://localhost:8080/ HTTP/1.1\nHost: bar.local" | vegeta attack -duration=5s -rate=20 | vegeta report > report_bar.txt
+          # Combine reports into one file
+          cat report_foo.txt report_bar.txt > full_report.txt
+      
+      - name: Kill port-forward
+        run: kill $(lsof -t -i :8080)
+
+      - name: Post PR comment
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          # Read the report content from the file
+          REPORT_CONTENT=$(cat full_report.txt)
+          PR_NUMBER=$(jq --raw-output .pull_request.number "$GITHUB_EVENT_PATH")
+          
+          # Post the report as a comment on the PR
+          curl -s -X POST \
+            -H "Authorization: token $GITHUB_TOKEN" \
+            -H "Content-Type: application/json" \
+            -d "{\"body\": \"### Vegeta Load Test Report\n\`\`\`\n$REPORT_CONTENT\n\`\`\`\"}" \
+            "https://api.github.com/repos/${GITHUB_REPOSITORY}/issues/$PR_NUMBER/comments"
+    
