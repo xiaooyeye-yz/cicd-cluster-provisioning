@@ -1,0 +1,32 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: bar
+  namespace: ingress-nginx 
+  labels:
+    app: bar
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: bar
+  template:
+    metadata:
+      labels:
+        app: bar
+    spec:
+      containers:
+        - name: http-echo
+          image: docker.m.daocloud.io/hashicorp/http-echo:1.0.0
+          args:
+            - "-text=Hello from bar!"
+            - "-listen=:6789"
+          ports:
+            - containerPort: 6789
+          resources:
+            limits:
+              cpu: "0.1"          # Maximum amount of CPU this container can use
+              memory: "128Mi"     # Maximum amount of memory this container can use
+            requests:
+              cpu: "0.1"          # Amount of CPU Kubernetes will reserve for this container
+              memory: "128Mi"     # Amount of memory Kubernetes will reserve for this container
