@@ -57,12 +57,14 @@ jobs:
           kubectl apply -f ingress.yaml
           kubectl wait --namespace ingress-nginx --for=condition=available deployment/foo --timeout=120s
           kubectl wait --namespace ingress-nginx --for=condition=available deployment/bar --timeout=120s
+          kubectl wait --for=condition=ready pod -l app=foo --timeout=120s
+          kubectl wait --for=condition=ready pod -l app=bar --timeout=120s
         
-
       - name: Update portforwarding for NGINX Ingress Controller
         run: |
           nohup $(command -v kubectl) port-forward svc/ingress-nginx-controller -n ingress-nginx 8080:80 > port-forward.log 2>&1 &
-
+          sleep 10
+          
       - name: Run Vegeta attack
         run: |
           # Run Vegeta attack and store the reports in files
@@ -70,11 +72,6 @@ jobs:
           echo "GET http://localhost:8080/ HTTP/1.1\nHost: bar.local" | vegeta attack -duration=5s -rate=20 | vegeta report > report_bar.txt
           # Combine reports into one file
           cat report_foo.txt report_bar.txt > full_report.txt
-
-      - name: Show token permissions
-        run: |
-          curl -s -H "Authorization: Bearer ${{ secrets.GITHUB_TOKEN }}" \
-          https://api.github.com/repos/${{ github.repository }}/actions/permissions
       
       - name: Post PR comment
         env:
@@ -90,6 +87,6 @@ jobs:
           curl -s -X POST \
             -H "Authorization: token $GITHUB_TOKEN" \
             -H "Content-Type: application/json" \
-            -d "{\"body\": \"### Vegeta Load Test Report\n\`\`\`\n$REPORT_CONTENT\n\`\`\`\"}" \
+            -d "$(jq -n --arg body "### Vegeta Load Test Report\n\`\`\`\n$REPORT_CONTENT\n\`\`\`" '{body: $body}')" \
             "https://api.github.com/repos/${GITHUB_REPOSITORY}/issues/$PR_NUMBER/comments"
             
