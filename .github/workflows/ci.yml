@@ -57,8 +57,8 @@ jobs:
           kubectl apply -f ingress.yaml
           kubectl wait --namespace ingress-nginx --for=condition=available deployment/foo --timeout=120s
           kubectl wait --namespace ingress-nginx --for=condition=available deployment/bar --timeout=120s
-          kubectl wait --for=condition=ready pod -l app=foo --timeout=120s
-          kubectl wait --for=condition=ready pod -l app=bar --timeout=120s
+          kubectl wait --namespace ingress-nginx --for=condition=ready pod -l app=foo --timeout=120s
+          kubectl wait --namespace ingress-nginx --for=condition=ready pod -l app=bar --timeout=120s
         
       - name: Update portforwarding for NGINX Ingress Controller
         run: |
