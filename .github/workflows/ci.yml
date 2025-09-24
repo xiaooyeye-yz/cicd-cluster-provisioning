@@ -75,13 +75,21 @@ jobs:
             sleep 1
           done
           
+          sleep 5
+          
+      - name: Create Vegeta targets
+        run: |
+          cat <<EOF > targets.txt
+          GET http://localhost:8080/
+          Host: foo.local
+      
+          GET http://localhost:8080/
+          Host: bar.local
+          EOF
+      
       - name: Run Vegeta attack
         run: |
-          # Run Vegeta attack and store the reports in files
-          echo "GET http://localhost:8080/ HTTP/1.1\nHost: foo.local" | vegeta attack -duration=5s -rate=20 | vegeta report > report_foo.txt
-          echo "GET http://localhost:8080/ HTTP/1.1\nHost: bar.local" | vegeta attack -duration=5s -rate=20 | vegeta report > report_bar.txt
-          # Combine reports into one file
-          cat report_foo.txt report_bar.txt > full_report.txt
+          vegeta attack -targets=targets.txt -duration=10s -rate=50 | vegeta report > full_report.txt
       
       - name: Post PR comment
         env:
