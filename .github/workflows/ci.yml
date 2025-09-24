@@ -63,7 +63,17 @@ jobs:
       - name: Update portforwarding for NGINX Ingress Controller
         run: |
           nohup $(command -v kubectl) port-forward svc/ingress-nginx-controller -n ingress-nginx 8080:80 > port-forward.log 2>&1 &
-          sleep 10
+
+          # Wait until NGINX serves the foo.local ingress
+          echo "Waiting for NGINX to pick up Ingress rules..."
+          until curl -s -o /dev/null -w "%{http_code}" -H "Host: foo.local" http://localhost:8080/ | grep -q 200; do
+            sleep 1
+          done
+
+          # Wait until NGINX serves the bar.local ingress
+          until curl -s -o /dev/null -w "%{http_code}" -H "Host: bar.local" http://localhost:8080/ | grep -q 200; do
+            sleep 1
+          done
           
       - name: Run Vegeta attack
         run: |
