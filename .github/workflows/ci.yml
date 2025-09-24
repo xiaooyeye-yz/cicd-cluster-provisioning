@@ -66,13 +66,6 @@ jobs:
           # Combine reports into one file
           cat report_foo.txt report_bar.txt > full_report.txt
       
-      - name: Kill port-forward and other cleanup
-        run: |
-          kill -9 $(lsof -t -i :8080)
-          rm report_foo.txt
-          rm report_bar.txt
-          rm full_report.txt
-
       - name: Post PR comment
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -89,4 +82,10 @@ jobs:
             -H "Content-Type: application/json" \
             -d "{\"body\": \"### Vegeta Load Test Report\n\`\`\`\n$REPORT_CONTENT\n\`\`\`\"}" \
             "https://api.github.com/repos/${GITHUB_REPOSITORY}/issues/$PR_NUMBER/comments"
-    
+            
+      - name: Kill port-forward and other cleanup
+        run: |
+          kill -9 $(lsof -t -i :8080)
+          rm report_foo.txt
+          rm report_bar.txt
+          rm full_report.txt
