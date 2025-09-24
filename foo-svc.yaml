@@ -9,5 +9,5 @@ spec:
   ports:
     - protocol: TCP
       port: 80        # Port exposed by the Service (for the Ingress to route traffic to)
-      targetPort: 6789 # The port inside the container where http-echo is listening
+      targetPort: 5678 # The port inside the container where http-echo is listening
   type: ClusterIP

@@ -5,6 +5,11 @@ on:
   pull_request:
     branches:
       - main    
+      
+permissions:           
+  contents: read
+  pull-requests: write  
+  issues: write        
 
 jobs:
   test:
@@ -37,11 +42,11 @@ jobs:
       
       - name: Install NGINX Ingress Controller 
         run: |
-          kubectl apply -f https://raw.githubusercontent.com/kubernetes/ingress-nginx/main/deploy/static/provider/cloud/deploy.yaml
+          kubectl apply -f ingress-nginx-resources.yaml
           kubectl wait --namespace ingress-nginx \
             --for=condition=ready pod \
             --selector=app.kubernetes.io/component=controller \
-            --timeout=120s
+            --timeout=180s
       
       - name: Deploy foo and bar services
         run: |
@@ -52,37 +57,54 @@ jobs:
           kubectl apply -f ingress.yaml
           kubectl wait --namespace ingress-nginx --for=condition=available deployment/foo --timeout=120s
           kubectl wait --namespace ingress-nginx --for=condition=available deployment/bar --timeout=120s
+          kubectl wait --namespace ingress-nginx --for=condition=ready pod -l app=foo --timeout=120s
+          kubectl wait --namespace ingress-nginx --for=condition=ready pod -l app=bar --timeout=120s
         
-
       - name: Update portforwarding for NGINX Ingress Controller
         run: |
-          kubectl port-forward svc/ingress-nginx-controller -n ingress-nginx 8080:80 &
-          PF_PID=$!
-          echo "Port-forward PID: $PF_PID"
+          nohup $(command -v kubectl) port-forward svc/ingress-nginx-controller -n ingress-nginx 8080:80 > port-forward.log 2>&1 &
 
+          # Wait until NGINX serves the foo.local ingress
+          echo "Waiting for NGINX to pick up Ingress rules..."
+          until curl -s -o /dev/null -w "%{http_code}" -H "Host: foo.local" http://localhost:8080/ | grep -q 200; do
+            sleep 1
+          done
+
+          # Wait until NGINX serves the bar.local ingress
+          until curl -s -o /dev/null -w "%{http_code}" -H "Host: bar.local" http://localhost:8080/ | grep -q 200; do
+            sleep 1
+          done
+          
+          sleep 5
+          
+      - name: Create Vegeta targets
+        run: |
+          cat <<EOF > targets.txt
+          GET http://localhost:8080/
+          Host: foo.local
+      
+          GET http://localhost:8080/
+          Host: bar.local
+          EOF
+      
       - name: Run Vegeta attack
         run: |
-          # Run Vegeta attack and store the reports in files
-          echo "GET http://localhost:8080/ HTTP/1.1\nHost: foo.local" | vegeta attack -duration=5s -rate=20 | vegeta report > report_foo.txt
-          echo "GET http://localhost:8080/ HTTP/1.1\nHost: bar.local" | vegeta attack -duration=5s -rate=20 | vegeta report > report_bar.txt
-          # Combine reports into one file
-          cat report_foo.txt report_bar.txt > full_report.txt
+          vegeta attack -targets=targets.txt -duration=10s -rate=50 | vegeta report > full_report.txt
       
-      - name: Kill port-forward
-        run: kill $(lsof -t -i :8080)
-
       - name: Post PR comment
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           # Read the report content from the file
           REPORT_CONTENT=$(cat full_report.txt)
+          echo REPORT_CONTENT
           PR_NUMBER=$(jq --raw-output .pull_request.number "$GITHUB_EVENT_PATH")
+          echo PR_NUMBER
           
           # Post the report as a comment on the PR
           curl -s -X POST \
             -H "Authorization: token $GITHUB_TOKEN" \
             -H "Content-Type: application/json" \
-            -d "{\"body\": \"### Vegeta Load Test Report\n\`\`\`\n$REPORT_CONTENT\n\`\`\`\"}" \
+            -d "$(jq -n --arg body "### Vegeta Load Test Report\n\`\`\`\n$REPORT_CONTENT\n\`\`\`" '{body: $body}')" \
             "https://api.github.com/repos/${GITHUB_REPOSITORY}/issues/$PR_NUMBER/comments"
-    
+            
